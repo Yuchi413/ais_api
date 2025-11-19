@@ -1,89 +1,179 @@
-# 船舶 AIS 資料收集與查詢系統
+# 🛰️ AI 智能海域監控與預警系統  
+**AI-Driven Maritime Intelligence & Defense Platform**
 
-這是一個基於 Flask 的船舶 AIS 資料收集與查詢系統，使用 SQLite 作為資料庫，並定期從 MarineTraffic 網站抓取船舶 AIS 資料。
+本系統整合 AIS 船舶資料、地理空間分析、航行警告解析，以及 AI 語意處理技術，旨在打造一套具備 **即時監控、風險判讀與自動警報** 的海域安全預警平台。  
+適用於國防情資應用、海域安全監測、學術研究與示範展示。
 
-## 功能特色
+---
 
-- **定期資料收集**：每 10 分鐘自動從 MarineTraffic 網站抓取最新船舶 AIS 資料
-- **資料儲存**：將抓取的資料儲存到 SQLite 資料庫中，包含船舶位置、航速、航向等詳細資訊
-- **API 查詢**：
-  - 取得最新每區塊的船舶資料
-  - 查詢歷史資料，可根據船名、船舶 ID 和時間範圍進行篩選
-- **錯誤處理**：自動記錄資料抓取過程中失敗的記錄到 failed_records.json
+## 📌 系統功能特色
 
-## 系統需求
+### 1️⃣ **AIS 船舶即時監控**
+- 從 MarineTraffic 資料來源擷取船隻資訊  
+- 自動分類：
+  - 中國海警（CHINACOASTGUARD）
+  - 中國籍船舶（CN Flag）
+  - 特定黑名單船舶  
+- 打包成統一格式供前端展示（GeoJSON / JSON）
 
-- Python 3.8+
-- 所需套件請參考 `requirements.txt`
+---
 
-## 安裝步驟
+### 2️⃣ **12 海里 & 24 海里警戒區自動判斷**
+- 載入 taiwan_12nm.geojson & taiwan_24nm.geojson  
+- 判斷船隻是否進入：
+  - 12 nm 領海警戒區
+  - 24 nm 緩衝區  
+- 自動計算距離最近的地點（使用 Shapely）
 
-1. 克隆專案：
-   ```bash
-   git clone https://github.com/your-repo/ais_api.git
-   ```
-2. 進入專案目錄：
-   ```bash
-   cd ais_api
-   ```
-3. 安裝套件：
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. 啟動服務：
-   ```bash
-   python server.py
-   ```
+---
 
-## API 使用說明
+### 3️⃣ **自動推播 LINE 警報**
+若船隻進入警戒區，系統會自動推送：
 
-### 取得最新資料
-`GET /api/ais/latest`
+- 船名、MMSI、國籍  
+- 經緯度 + Map URL  
+- 距離最近陸地點  
+- 所屬緯度格  
 
-**範例回應：**
-```json
-{
-  "timestamp": "2025-03-30T12:33:20.123456",
-  "results": {
-    "z_2_X_0_Y_0_station_0": {
-      "timestamp": "2025-03-30T12:30:00.000000",
-      "source": "z_2_X_0_Y_0_station_0",
-      "ship_id": "123456789",
-      "shipname": "EXAMPLE SHIP",
-      "lat": 25.033333,
-      "lon": 121.533333,
-      "speed": 12.3,
-      "course": 270.0,
-      "heading": 268.0,
-      "rot": 0.5,
-      "destination": "Keelung",
-      "dwt": "13500",
-      "flag": "Taiwan",
-      "shiptype": "Cargo",
-      "gt_shiptype": "General Cargo",
-      "length": "150",
-      "width": "23"
-    }
-  }
-}
+並內建重複警報防護（Hash + Cooldown）。
+
+---
+
+### 4️⃣ **航行警告（航警）自動解析**
+- 自動抓取中國海事局航警資料  
+- AI 解析文字中的經緯度、射擊區範圍  
+- 繪製成 GeoJSON  
+- 可與 AIS 數據疊合顯示
+
+---
+
+### 5️⃣ **Web 前端 3D 顯示介面（CesiumJS）**
+- 支援船隻位置顯示  
+- 支援警戒區疊圖  
+- 支援多圖層切換  
+- 支援黑名單即時查詢  
+- 支援自訂警戒區顯示  
+
+---
+
+## 🗂️ 專案結構（Project Structure）
+
 ```
 
-### 查詢歷史資料
-`GET /api/ais/history`
+SIMPLE_AIS_API/
+│
+├── app.py                 # Flask 主程式
+├── fetcher.py             # AIS 下載 / 解析
+├── scheduler.py           # APScheduler 排程
+├── database.py            # SQLAlchemy 設定
+├── models.py              # Database ORM Models
+├── config.py              # 設定檔（非敏感）
+├── utils.py               # 共用工具函式
+│
+├── routes/                # API 路由
+│   ├── api.py
+│   ├── web.py
+│   ├── blacklist.py
+│   └── alarm_api.py
+│
+├── static/                # 靜態前端資料
+│   ├── ships_map.html
+│   ├── taiwan_12nm.geojson
+│   └── taiwan_24nm.geojson
+│
+├── templates/             # Flask HTML 模板
+│   └── ship.html
+│
+├── alarm_loader.py        # 航警自動解析/載入
+├── line_push.py           # LINE 推播服務
+├── mail_alert.py          # Gmail Email 警報（選用）
+│
+├── requirements.txt       # Python 套件列表
+├── .gitignore             # 避免 .env / .db 洩漏
+└── README.md
 
-**查詢參數：**
-- shipname: 船名 (模糊查詢)
-- ship_id: 船舶 ID (精確查詢)
-- start: 開始時間 (ISO 8601 格式)
-- end: 結束時間 (ISO 8601 格式)
+````
 
-**範例請求：**
+---
+
+## 🛠️ 安裝與啟動方式
+
+### **1️⃣ 建立 Virtual Environment**
+```bash
+python -m venv env
+source env/bin/activate   # Windows: env\Scripts\activate
+````
+
+### **2️⃣ 安裝需求套件**
+
+```bash
+pip install -r requirements.txt
 ```
-/api/ais/history?shipname=example&start=2025-03-30T00:00:00&end=2025-03-30T23:59:59
+
+### **3️⃣ 建立 `.env`（此檔案不會上傳 GitHub）**
+
+內容範例：
+
+```
+# === LINE 設定 ===
+LINE_ACCESS_TOKEN=
+LINE_CHANNEL_SECRET=
+LINE_TARGET_USER_ID=
+
+# 是否啟用 LINE 推播
+ENABLE_LINE_PUSH=False
+
+# === Gmail 寄信設定 ===
+GMAIL_USER=
+GMAIL_PASS=
+ALERT_EMAIL_TO=
+#不想再被 email 轟炸，只要把 ENABLE_EMAIL_ALERT=false 就直接關掉。
+
+# 是否啟用 Gmail 警報
+ENABLE_EMAIL_ALERT=true
 ```
 
-## 版本資訊
+### **4️⃣ 啟動 Flask API**
 
-- v1.0.0 (2025-03-30): 初始版本
-# Boat
-# ais_api
+```bash
+python app.py
+```
+
+---
+
+## 🛰️ API Endpoints
+
+### 🚢 `/api/ships`
+
+回傳所有監測到的 AIS 船舶資訊。
+
+### ⚠ `/api/alerts`
+
+檢查是否有船隻進入 12/24 海里。
+
+### 🎯 `/api/blacklist`
+
+查詢/更新黑名單。
+
+### 🗺 `/`
+
+前端 Cesium 3D 顯示介面。
+
+---
+
+## 🔐 安全設計
+
+* `.env` 已加入 `.gitignore`，避免金鑰外洩
+* `.db` 本地資料庫不會上傳
+* API Key、Gmail、LINE Token 不存入 repo
+
+---
+
+## 📌 使用技術 Technology Stack
+
+* **Python** — Flask / SQLAlchemy / APScheduler
+* **GIS** — Shapely / GeoJSON / CesiumJS
+* **AI** — OpenAI API（航警文字解析）
+* **Data Source** — MarineTraffic AIS
+* **Alerting** — LINE Messaging API / Gmail API
+
