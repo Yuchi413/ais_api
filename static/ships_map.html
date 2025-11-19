@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-tw">
+
+<head>
+    <meta charset="UTF-8">
+    <title>船舶位置地圖</title>
+    <!-- Include the CesiumJS JavaScript and CSS files -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html,
+        body,
+        #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="queryInfo"
+        style="position: absolute; top: 20px; left: 20px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; opacity: 0.5;">
+        <style>
+            .degInput {
+                width: 130px;
+            }
+        </style>
+        <h3>船舶查詢</h3>
+        <label>船名: <input type="text" id="shipname" style="width: 162px;"></label><br>
+        <label>最小緯度: <input class="degInput" type="number" id="minLat" step="0.1" value="23"></label><br>
+        <label>最大緯度: <input class="degInput" type="number" id="maxLat" step="0.1" value="30"></label><br>
+        <label>最小經度: <input class="degInput" type="number" id="minLon" step="0.1" value="110"></label><br>
+        <label>最大經度: <input class="degInput" type="number" id="maxLon" step="0.1" value="125"></label><br>
+        <label>開始時間: <br><input type="datetime-local" id="start" value="2025-03-30T13:33:00" style="width: 205px;"></label><br>
+        <label>結束時間: <br><input type="datetime-local" id="end" value="2025-03-30T13:53:00" style="width: 205px;"></label><br>
+        <button onclick="loadShipsData()">查詢</button>
+    </div>
+    <div id="cesiumContainer"></div>
+    <script type="module">
+        import { getTilesInRange } from '/static/tile-utils.js';
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiYWU1ZDY3ZC1mYzM1LTQwMTUtYWEwMy1hZjBlZjdlNmRmZTUiLCJpZCI6MjQ5ODg1LCJpYXQiOjE3Mjk1ODExNjJ9.PMxlzgfO9AnBGlodb-qOO8DFhUMOFc3QMbfFqVKk7xY';
+        const tiles = getTilesInRange(25.1, 25.3, 121.5, 121.8);
+        console.log(tiles);
+        // 初始化 Cesium Viewer
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // terrain: Cesium.Terrain.fromWorldTerrain(),
+            animation: false,          // ⛔ Disable animation controls
+            timeline: false,           // ⛔ Disable timeline
+            baseLayerPicker: false,    // ⛔ Disable base layer selector
+            geocoder: false,           // ⛔ Disable search box
+            homeButton: false,         // ⛔ Disable home button
+            // infoBox: false,            // ⛔ Disable info box
+            sceneModePicker: false,    // ⛔ Disable 2D/3D mode switch
+            navigationHelpButton: false, // ⛔ Disable help button
+            fullscreenButton: false,   // ⛔ Disable fullscreen button
+            selectionIndicator: false, // ⛔ Disable selection highlight
+            shouldAnimate: false       // ⛔ Don't auto-play animations
+        });
+
+        function getArrowPolyline(longitude, latitude, heading, length) {
+            // console.log(heading);
+            // Convert heading to radians and calculate the base position
+            const headingRad = Cesium.Math.toRadians(90 - heading);
+            const baseLength = (1 / 7) * length;
+
+            const baseLongitude = longitude - (baseLength * Math.cos(headingRad)) / (111320 * Math.cos(Cesium.Math.toRadians(latitude)));
+            const baseLatitude = latitude - (baseLength * Math.sin(headingRad)) / 110540;
+
+            // Calculate the coordinates for the arrow wings
+            const angle = 165;
+            const leftWingLongitude = longitude + (length * 0.2 * Math.cos(headingRad + Cesium.Math.toRadians(angle))) / (111320 * Math.cos(Cesium.Math.toRadians(latitude)));
+            const leftWingLatitude = latitude + (length * 0.2 * Math.sin(headingRad + Cesium.Math.toRadians(angle))) / 110540;
+
+            const rightWingLongitude = longitude + (length * 0.2 * Math.cos(headingRad - Cesium.Math.toRadians(angle))) / (111320 * Math.cos(Cesium.Math.toRadians(latitude)));
+            const rightWingLatitude = latitude + (length * 0.2 * Math.sin(headingRad - Cesium.Math.toRadians(angle))) / 110540;
+
+            // viewer.flyTo(entity);
+            return {
+                positions: Cesium.Cartesian3.fromDegreesArray(
+                    [
+                        longitude, latitude, // Tip of the arrow
+                        leftWingLongitude, leftWingLatitude, // Left wing of the arrow
+                        baseLongitude, baseLatitude, // Base of the arrow
+                        rightWingLongitude, rightWingLatitude, // Right wing of the arrow
+                        longitude, latitude, // Tip of the arrow
+                    ]
+                ),
+                width: 3,
+                material: Cesium.Color.RED,
+                clampToGround: true,
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
+                    0.0,          // min distance to show
+                    30000000.0      // max distance to show
+                )
+            };
+        }
+
+
+        function setDefaultTimeRange() {
+            const now = new Date();
+            const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+            function toDatetimeLocalString(date) {
+                return date.toISOString().slice(0, 16); // 格式為 "YYYY-MM-DDTHH:mm"
+            }
+
+            document.getElementById('start').value = toDatetimeLocalString(oneHourAgo);
+            document.getElementById('end').value = toDatetimeLocalString(now);
+        }
+
+        setDefaultTimeRange();
+
+        // 取得船舶數據並繪製到地圖上
+        async function loadShipsData() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                // const shipname = urlParams.get('shipname') || '';
+
+                const shipname = document.getElementById('shipname').value;
+                const startTime = document.getElementById('start').value;
+                const endTime = document.getElementById('end').value;
+                const minLat = document.getElementById('minLat').value;
+                const maxLat = document.getElementById('maxLat').value;
+                const minLon = document.getElementById('minLon').value;
+                const maxLon = document.getElementById('maxLon').value;
+
+                const queryParams = new URLSearchParams();
+                if (shipname) queryParams.set('shipname', shipname);
+                if (startTime && endTime) {
+                    queryParams.set('start', startTime.replace('T', ' ') + '.000');
+                    queryParams.set('end', endTime.replace('T', ' ') + '.000');
+                }
+                if (minLat && maxLat) {
+                    queryParams.set('min_lat', minLat);
+                    queryParams.set('max_lat', maxLat);
+                }
+                if (minLon && maxLon) {
+                    queryParams.set('min_lon', minLon);
+                    queryParams.set('max_lon', maxLon);
+                }
+
+                console.log(queryParams.toString());
+
+                const response = await fetch(`/api/ais/history?${queryParams.toString()}`);
+                const data = await response.json();
+                console.log(data);
+
+                viewer.entities.removeAll();
+
+                Object.values(data).forEach(ship => {
+                    const position = Cesium.Cartesian3.fromDegrees(ship.lon, ship.lat);
+
+                    // 計算箭頭終點位置
+                    const arrowLength = 10 + ship.speed * 100; // 航速影響箭頭長度
+
+                    viewer.entities.add({
+                        position: position,
+                        polyline: getArrowPolyline(ship.lon, ship.lat, parseFloat(ship.course), arrowLength),
+                        label: {
+                            text: ship.shipname,
+                            font: '14px sans-serif',
+                            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                            outlineWidth: 2,
+                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                            pixelOffset: new Cesium.Cartesian2(0, -32),
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
+                                0.0,         // minimum distance to show label
+                                500000.0     // maximum distance to show label
+                            )
+                        },
+                        description: `
+                            <table>
+                                <tr><td>船名:</td><td>${ship.shipname}</td></tr>
+                                <tr><td>速度:</td><td>${ship.speed} 節</td></tr>
+                                <tr><td>航向:</td><td>${ship.course}°</td></tr>
+                                <tr><td>目的地:</td><td>${ship.destination}</td></tr>
+                                <tr><td>船舶類型:</td><td>${ship.shiptype}</td></tr>
+                                <tr><td>最後更新:</td><td>${new Date(ship.timestamp).toLocaleString()}</td></tr>
+                            </table>
+                        `
+                    });
+                });
+
+                // 自動調整視角到所有船舶的位置
+                const positions = Object.values(data).map(ship =>
+                    Cesium.Cartesian3.fromDegrees(ship.lon, ship.lat)
+                );
+                viewer.zoomTo(viewer.entities);
+
+            } catch (error) {
+                console.error('Error loading ships data:', error);
+            }
+        }
+
+        // 每分鐘更新一次船舶位置
+        loadShipsData();
+        setInterval(loadShipsData, 60000);
+    </script>
+</body>
+
+</html>

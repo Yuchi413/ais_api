@@ -1,0 +1,23 @@
+# Environment variables (API keys)
+.env
+
+# Python virtual environment
+env/
+venv/
+
+# Databases
+*.db
+instance/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs / Cache files
+failed_records.json
+state_cache.json
+
+# Editor / OS
+.vs/
+.vscode/
+.DS_Store
