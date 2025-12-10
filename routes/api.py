@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, abort
 from dateutil import parser
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from models import (
     ShipAIS,
@@ -151,20 +151,43 @@ def get_boat_check24_data():
 @api_blueprint.route("/ccg_check12_data", methods=["GET"])
 def get_ccg_check12_data():
     try:
-        results = CCGCheck12Session.query(CCGCheck12ShipAIS).all()
+        # 只抓最近 20 分鐘內的資料（UTC）
+        cutoff = datetime.utcnow() - timedelta(minutes=20)
+
+        # 先照時間由新到舊排
+        records = (
+            CCGCheck12Session.query(CCGCheck12ShipAIS)
+            .filter(CCGCheck12ShipAIS.timestamp >= cutoff)
+            .order_by(CCGCheck12ShipAIS.timestamp.desc())
+            .all()
+        )
+
+        # 同一艘船只留最新一筆
+        latest_by_ship = {}
+        for r in records:
+            if r.ship_id not in latest_by_ship:
+                latest_by_ship[r.ship_id] = r
+
         data = [
             {
                 "ship_id": r.ship_id,
                 "shipname": r.shipname,
                 "lat": r.lat,
                 "lon": r.lon,
+                # 維持 isoformat，前端 formatTimeDiff 會接這個字串 + "Z"
                 "timestamp": r.timestamp.isoformat() if r.timestamp else None
             }
-            for r in results
+            for r in latest_by_ship.values()
         ]
-        return jsonify({"timestamp": datetime.utcnow().isoformat(), "boats": data})
+
+        return jsonify({
+            "timestamp": datetime.utcnow().isoformat(),
+            "count": len(data),
+            "boats": data
+        })
     except Exception as e:
         abort(500, description=str(e))
+
 
 # =========================================
 # API: ccg_check24（目前在 12–24nm 間的最新海警船）
@@ -172,7 +195,20 @@ def get_ccg_check12_data():
 @api_blueprint.route("/ccg_check24_data", methods=["GET"])
 def get_ccg_check24_data():
     try:
-        results = CCGCheck24Session.query(CCGCheck24ShipAIS).all()
+        cutoff = datetime.utcnow() - timedelta(minutes=20)
+
+        records = (
+            CCGCheck24Session.query(CCGCheck24ShipAIS)
+            .filter(CCGCheck24ShipAIS.timestamp >= cutoff)
+            .order_by(CCGCheck24ShipAIS.timestamp.desc())
+            .all()
+        )
+
+        latest_by_ship = {}
+        for r in records:
+            if r.ship_id not in latest_by_ship:
+                latest_by_ship[r.ship_id] = r
+
         data = [
             {
                 "ship_id": r.ship_id,
@@ -181,11 +217,17 @@ def get_ccg_check24_data():
                 "lon": r.lon,
                 "timestamp": r.timestamp.isoformat() if r.timestamp else None
             }
-            for r in results
+            for r in latest_by_ship.values()
         ]
-        return jsonify({"timestamp": datetime.utcnow().isoformat(), "boats": data})
+
+        return jsonify({
+            "timestamp": datetime.utcnow().isoformat(),
+            "count": len(data),
+            "boats": data
+        })
     except Exception as e:
         abort(500, description=str(e))
+
 
 # =========================================
 # API: chinaboat/all（所有中國籍船隻資料）
@@ -241,24 +283,29 @@ def get_all_chinaboats():
 
 
 # =========================================
-# API: chinaboat/latest（每艘船最新一筆）
+# API: chinaboat/latest（每艘船3天內最新一筆）
 # =========================================
+
 from sqlalchemy import func, and_
 
 @api_blueprint.route("/chinaboat/latest", methods=["GET"])
 def get_latest_chinaboats():
     try:
-        # 子查詢：找每艘船最新 timestamp
+        # ⭐ 只看最近 3 天內的資料
+        cutoff = datetime.utcnow() - timedelta(days=3)
+
+        # 子查詢：每艘船在「最近三天內」的最新時間
         subquery = (
             ChinaBoatSession.query(
                 ChinaBoatAIS.ship_id,
                 func.max(ChinaBoatAIS.timestamp).label("latest_ts")
             )
+            .filter(ChinaBoatAIS.timestamp >= cutoff)  # 只抓三天內
             .group_by(ChinaBoatAIS.ship_id)
             .subquery()
         )
 
-        # 主查詢：取得每艘船最新那一筆完整資料
+        # 主查詢：拿到每艘船「最新那一筆完整紀錄」
         results = (
             ChinaBoatSession.query(ChinaBoatAIS)
             .join(
@@ -272,7 +319,6 @@ def get_latest_chinaboats():
             .all()
         )
 
-        # 格式化輸出
         data = [
             {
                 "ship_id": r.ship_id,
@@ -291,6 +337,7 @@ def get_latest_chinaboats():
 
     except Exception as e:
         abort(500, description=str(e))
+
 
 
 
