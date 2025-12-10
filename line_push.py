@@ -130,12 +130,26 @@ def build_flex_card(ship):
         "footer": {
             "type": "box",
             "layout": "vertical",
+            "spacing": "sm",
             "contents": [
                 {
                     "type": "button",
                     "style": "primary",
                     "color": header_color,
-                    "action": {"type": "uri", "label": "🌍 查看地圖", "uri": map_url}
+                    "action": {
+                        "type": "uri",
+                        "label": "🌍 Google Maps",
+                        "uri": map_url
+                    }
+                },
+                {
+                    "type": "button",
+                    "style": "link",
+                    "action": {
+                        "type": "uri",
+                        "label": "📡 MarineTraffic",
+                        "uri": f"https://www.marinetraffic.com/en/ais/home/centerx:{lon}/centery:{lat}/zoom:12"
+                    }
                 }
             ]
         }
@@ -226,7 +240,21 @@ def build_custom_zone_card(ship):
                     "type": "button",
                     "style": "link",
                     "height": "sm",
-                    "action": {"type": "uri", "label": "🌍 Google Maps", "uri": google_url}
+                    "action": {
+                        "type": "uri",
+                        "label": "🌍 Google Maps",
+                        "uri": google_url
+                    }
+                },
+                {
+                    "type": "button",
+                    "style": "link",
+                    "height": "sm",
+                    "action": {
+                        "type": "uri",
+                        "label": "📡 MarineTraffic",
+                        "uri": f"https://www.marinetraffic.com/en/ais/home/centerx:{ship['lon']}/centery:{ship['lat']}/zoom:12"
+                    }
                 }
             ]
         }
